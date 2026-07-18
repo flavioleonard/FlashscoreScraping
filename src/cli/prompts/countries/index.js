@@ -49,6 +49,7 @@ const findCountry = (countries, targetName) => {
 const formatCountryName = (name) => {
   return name
     .toLowerCase()
+    .replace(/-/g, " ")
     .replace(/[^a-z0-9\s]/g, "")
     .trim()
     .replace(/\s+/g, "-");

@@ -100,6 +100,7 @@ const withRetry = async (fn, retries = 3) => {
   } catch (error) {
     stop();
     if (error.message) console.error(`\n${error.message}\n`);
+    process.exitCode = 1;
   } finally {
     await context?.close();
     await browser?.close();
