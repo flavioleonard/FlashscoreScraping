@@ -1,3 +1,4 @@
+import { TIMEOUT } from "../../../constants/index.js";
 import { openPageAndNavigate, waitForSelectorSafe } from "../../index.js";
 
 export const getMatchLinks = async (context, leagueSeasonUrl, type) => {
@@ -5,9 +6,14 @@ export const getMatchLinks = async (context, leagueSeasonUrl, type) => {
 
   const LOAD_MORE_SELECTOR = '[data-testid="wcl-buttonLink"]';
   const MATCH_SELECTOR =
-    ".event__match.event__match--static.event__match--twoLine";
-  const CLICK_DELAY = 600;
+    ".event__match.event__match--withRowLink.event__match--twoLine";
   const MAX_EMPTY_CYCLES = 4;
+
+  // The list is client-rendered, so right after navigation there may be
+  // neither matches nor the "load more" button in the DOM yet. Without this
+  // wait the loop below sees no button, exits immediately, and only the
+  // first lazily-rendered batch ever gets collected.
+  await waitForSelectorSafe(page, [MATCH_SELECTOR, LOAD_MORE_SELECTOR], TIMEOUT);
 
   let emptyCycles = 0;
 
@@ -19,18 +25,24 @@ export const getMatchLinks = async (context, leagueSeasonUrl, type) => {
 
     try {
       await loadMoreBtn.click();
-      await page.waitForTimeout(CLICK_DELAY);
     } catch {
       break;
     }
 
-    const countAfter = await page.$$eval(MATCH_SELECTOR, (els) => els.length);
-
-    if (countAfter === countBefore) {
+    // Wait for the match count to actually grow instead of a fixed delay:
+    // on a loaded system the new rows can take longer than a flat timeout
+    // to render, which previously made this loop give up after only one page.
+    try {
+      await page.waitForFunction(
+        ({ selector, prevCount }) =>
+          document.querySelectorAll(selector).length > prevCount,
+        { selector: MATCH_SELECTOR, prevCount: countBefore },
+        { timeout: TIMEOUT }
+      );
+      emptyCycles = 0;
+    } catch {
       emptyCycles++;
       if (emptyCycles >= MAX_EMPTY_CYCLES) break;
-    } else {
-      emptyCycles = 0;
     }
   }
 
@@ -39,7 +51,7 @@ export const getMatchLinks = async (context, leagueSeasonUrl, type) => {
   const matchIdList = await page.evaluate(() => {
     return Array.from(
       document.querySelectorAll(
-        ".event__match.event__match--static.event__match--twoLine"
+        ".event__match.event__match--withRowLink.event__match--twoLine"
       )
     ).map((element) => {
       const id = element?.id?.replace("g_1_", "");

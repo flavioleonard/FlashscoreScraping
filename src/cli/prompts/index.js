@@ -33,9 +33,11 @@ const resolveSeason = async (context, cliOptions, country) => {
   const leagueName = capitalizeWords(cliOptions.league);
   console.info(`${chalk.green("✔")} League season: ${chalk.cyan(leagueName)}`);
 
+  const countrySlug = country?.name.replace(/\s+/g, "-");
+
   return {
     name: leagueName,
-    url: `${BASE_URL}/football/${country?.name}/${cliOptions.league}`.toLowerCase(),
+    url: `${BASE_URL}/football/${countrySlug}/${cliOptions.league}`.toLowerCase(),
   };
 };
 
