@@ -98,7 +98,7 @@ const buildStatsUrl = (matchUrl) => {
   const base = url.origin + url.pathname.replace(/\/$/, "");
   const mid = url.searchParams.get("mid");
 
-  return `${base}/summary/stats/0/?mid=${mid}`;
+  return `${base}/summary/stats/?mid=${mid}`;
 };
 
 const extractMatchData = async (page) => {
@@ -207,20 +207,24 @@ const extractMatchStatistics = async (page) => {
   return await page.evaluate(async () => {
     return Array.from(
       document.querySelectorAll("div[data-testid='wcl-statistics']")
-    ).map((element) => ({
-      category: element
-        .querySelector("div[data-testid='wcl-statistics-category']")
-        ?.innerText.trim(),
-      homeValue: Array.from(
-        element.querySelectorAll(
-          "div[data-testid='wcl-statistics-value'] > strong"
-        )
-      )?.[0]?.innerText.trim(),
-      awayValue: Array.from(
-        element.querySelectorAll(
-          "div[data-testid='wcl-statistics-value'] > strong"
-        )
-      )?.[1]?.innerText.trim(),
-    }));
+    ).map((element) => {
+      // Each side's value div can hold more than one <span> (e.g. "Passes"
+      // shows a percentage plus a "(x/y)" breakdown) — take only the first
+      // span *within each side's own div*, not the first two spans in the
+      // row, otherwise a two-span stat yields two home values instead of
+      // one home and one away.
+      const valueDivs = Array.from(
+        element.querySelectorAll("div[data-testid='wcl-statistics-value']")
+      );
+      const readValue = (div) => div?.querySelector("span")?.innerText.trim();
+
+      return {
+        category: element
+          .querySelector("div[data-testid='wcl-statistics-category']")
+          ?.innerText.trim(),
+        homeValue: readValue(valueDivs[0]),
+        awayValue: readValue(valueDivs[1]),
+      };
+    });
   });
 };
