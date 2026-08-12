@@ -15,7 +15,7 @@ const SECTION_HOME = 0;
 const SECTION_AWAY = 1;
 const SECTION_H2H = 2;
 
-const buildH2HUrl = (matchUrl) => {
+export const buildH2HUrl = (matchUrl) => {
   if (!matchUrl) return null;
 
   const url = new URL(matchUrl);
@@ -28,7 +28,7 @@ const buildH2HUrl = (matchUrl) => {
 // H2H rows show "DD.MM.YY" (2-digit year) instead of the "DD.MM.YYYY HH:MM"
 // used everywhere else in this scraper's output — normalize so downstream
 // consumers can keep using the same date parsing for both.
-const normalizeH2HDate = (shortDate) => {
+export const normalizeH2HDate = (shortDate) => {
   const match = shortDate?.match(/^(\d{2})\.(\d{2})\.(\d{2})$/);
   if (!match) return shortDate ?? "";
 
