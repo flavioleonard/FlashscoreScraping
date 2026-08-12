@@ -99,7 +99,13 @@ const withRetry = async (fn, retries = 3) => {
     );
   } catch (error) {
     stop();
-    if (error.message) console.error(`\n${error.message}\n`);
+    // Defense in depth: a throwable without a `.message` (e.g. a bare
+    // `throw Error;` — the constructor function itself, not an instance —
+    // used to slip through here silently, since `error.message` on a
+    // function is undefined/falsy. That specific bug is now fixed at each
+    // throw site, but this still logs SOMETHING for any other
+    // non-Error/non-message throwable instead of exiting with zero output.
+    console.error(`\n${error?.message ?? String(error)}\n`);
     process.exitCode = 1;
   } finally {
     await context?.close();

@@ -1,61 +1,30 @@
 import { BASE_URL, TIMEOUT } from "../../../constants/index.js";
-import { diagnoseScrapePage, openPageAndNavigate, waitForSelectorSafe } from "../../index.js";
+import {
+  diagnoseScrapePage,
+  dismissAgeVerificationIfPresent,
+  dismissCookieConsentIfPresent,
+  dismissGenericDialogIfPresent,
+  openPageAndNavigate,
+  waitForSelectorSafe,
+} from "../../index.js";
+
+// The three dismiss functions used below used to be defined in this file —
+// they've moved to ../../index.js (src/scraper/index.js) because they're
+// generic, site-wide overlay handling (age gate / cookie consent / generic
+// dialogs), not specific to the day-picker. matches/index.js's "load more"
+// pagination click turned out to need the exact same handling, so they now
+// live in the shared module both call sites import from. Re-exported here
+// so existing imports of these names from this file keep working.
+export {
+  dismissAgeVerificationIfPresent,
+  dismissCookieConsentIfPresent,
+  dismissGenericDialogIfPresent,
+};
 
 const MATCH_SELECTOR =
   ".event__match.event__match--withRowLink.event__match--twoLine";
 const NEXT_DAY_SELECTOR = '[data-day-picker-arrow="next"]';
 const LEAGUE_WRAPPER_SELECTOR = ".headerLeague__wrapper";
-// Flashscore's age-verification gate (a "wcl-dialog" overlay asking to
-// confirm your age) sits on top of the day-picker arrow and intercepts its
-// pointer events. There's no stable data-testid for the specific button (the
-// dialog's two buttons share data-testid="wcl-button"), so we match by text —
-// on the stable "AND OLDER" suffix rather than a specific age, since the site
-// already changed the threshold once ("24 AND OLDER" -> "18 AND OLDER"). Both
-// dialogs can mount a beat after the match rows do, so we use locators (which
-// actively wait/retry) rather than a one-shot querySelector check — a single
-// snapshot check right after the match rows appear can race the dialog's own
-// mount and silently miss it.
-const AGE_VERIFICATION_BUTTON_TEXT = /AND OLDER/i;
-// A second, independent overlay (OneTrust cookie consent banner) also sits on
-// top of the page and intercepts clicks — has its own stable button id.
-const COOKIE_CONSENT_ACCEPT_SELECTOR = "#onetrust-accept-btn-handler";
-const DIALOG_DISMISS_TIMEOUT = 5000;
-
-export async function dismissAgeVerificationIfPresent(page) {
-  await page
-    .locator('[data-testid="wcl-button"]')
-    .filter({ hasText: AGE_VERIFICATION_BUTTON_TEXT })
-    .first()
-    .click({ timeout: DIALOG_DISMISS_TIMEOUT })
-    .catch(() => {});
-}
-
-export async function dismissCookieConsentIfPresent(page) {
-  await page
-    .locator(COOKIE_CONSENT_ACCEPT_SELECTOR)
-    .click({ timeout: DIALOG_DISMISS_TIMEOUT })
-    .catch(() => {});
-}
-
-// Flashscore also shows other one-off dialogs built on the same generic
-// "wcl-dialog" component — e.g. a locale-redirect prompt ("Lançamos um
-// Flashscore Brasil...", confirmed live) that has nothing to do with age or
-// cookies, so neither dismissal above matches it. Unlike the age gate (a
-// forced either/or choice with no close button), these generic dialogs carry
-// a stable close-button testid — clicking it declines whatever the dialog is
-// offering and leaves the page as-is, which is what we want in every case
-// (we never want to actually follow a locale redirect mid-scrape). This is a
-// catch-all for dialog types we haven't specifically identified yet, not a
-// replacement for the two dismissals above.
-const GENERIC_DIALOG_CLOSE_SELECTOR = '[data-testid="wcl-dialogCloseButton"]';
-
-export async function dismissGenericDialogIfPresent(page) {
-  await page
-    .locator(GENERIC_DIALOG_CLOSE_SELECTOR)
-    .first()
-    .click({ timeout: DIALOG_DISMISS_TIMEOUT })
-    .catch(() => {});
-}
 
 function matchIdsFingerprint(page) {
   return page.evaluate(

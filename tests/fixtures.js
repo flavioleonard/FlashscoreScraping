@@ -146,6 +146,123 @@ export function buildDialogFixtureHtml(overlayType) {
   });
 }
 
+// Builds a match-list page mimicking matches/index.js's results/fixtures
+// pages: an initial batch of `.event__match` rows plus a "load more" button
+// (`[data-testid="wcl-buttonLink"]`, matching LOAD_MORE_SELECTOR in
+// matches/index.js) that appends the next batch on each click. Once the last
+// batch has loaded, the button removes itself — same "end of range" signal
+// as the day-picker fixture above, and for the same reason: it's what lets
+// clickLoadMoreWithRetries's page.$(selector) check treat "no button" as a
+// legitimate stop condition rather than a failure. `blockerType` reuses the
+// same overlay types (age/cookie/generic/unknown) as buildDialogFixtureHtml
+// to exercise clickLoadMoreWithRetries's overlay recovery.
+export function buildMatchListPageHtml({ batches, blockerType = "none" }) {
+  return `<!doctype html>
+<html><body>
+<div id="root"></div>
+<button data-testid="wcl-buttonLink" id="load-more-btn"></button>
+<script>
+  const batches = ${JSON.stringify(batches)};
+  let batchIndex = 0;
+
+  function renderBatch(batch) {
+    const root = document.getElementById("root");
+    batch.forEach((m) => {
+      const row = document.createElement("div");
+      row.id = "g_1_" + m.id;
+      row.className = "event__match event__match--withRowLink event__match--twoLine";
+      const link = document.createElement("a");
+      link.className = "eventRowLink";
+      link.href = "https://www.flashscore.com/match/football/" + m.id + "/?mid=" + m.id;
+      // Real match rows always render visible text (team names, time, ...),
+      // which is what gives them a non-zero layout box. A childless <a> with
+      // no text content collapses to zero size, which Playwright's default
+      // waitForSelector({state: "visible"}) treats as *hidden* — that would
+      // make getMatchLinks' post-loop waitForSelectorSafe(page, [MATCH_SELECTOR])
+      // spuriously warn "selector never appeared" even though the row is very
+      // much in the DOM and read fine by page.evaluate(). This text node is
+      // only here to keep the fixture's rows visible, matching real markup.
+      link.textContent = m.id;
+      row.appendChild(link);
+      root.appendChild(row);
+    });
+  }
+
+  function closeOverlay() {
+    const el = document.querySelector(".blocking-overlay");
+    if (el) el.remove();
+  }
+
+  function injectOverlay(type) {
+    const overlay = document.createElement("div");
+    overlay.classList.add("blocking-overlay");
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.zIndex = "9999";
+    overlay.style.background = "rgba(0,0,0,0.4)";
+
+    if (type === "age") {
+      overlay.setAttribute("data-testid", "wcl-dialog-overlay");
+      overlay.setAttribute("data-state", "open");
+      const btnOld = document.createElement("button");
+      btnOld.setAttribute("data-testid", "wcl-button");
+      btnOld.textContent = "I'M 18 AND OLDER";
+      btnOld.addEventListener("click", closeOverlay);
+      const btnYoung = document.createElement("button");
+      btnYoung.setAttribute("data-testid", "wcl-button");
+      btnYoung.textContent = "I'M YOUNGER THAN 18";
+      overlay.appendChild(btnOld);
+      overlay.appendChild(btnYoung);
+    } else if (type === "cookie") {
+      overlay.id = "onetrust-consent-sdk";
+      const btn = document.createElement("button");
+      btn.id = "onetrust-accept-btn-handler";
+      btn.textContent = "I Accept";
+      btn.addEventListener("click", closeOverlay);
+      overlay.appendChild(btn);
+    } else if (type === "generic") {
+      overlay.setAttribute("data-testid", "wcl-dialog-overlay");
+      overlay.setAttribute("data-state", "open");
+      const wrapper = document.createElement("div");
+      wrapper.setAttribute("data-testid", "wcl-dialog-wrapper");
+      const closeBtn = document.createElement("button");
+      closeBtn.setAttribute("data-testid", "wcl-dialogCloseButton");
+      closeBtn.textContent = "X";
+      closeBtn.addEventListener("click", closeOverlay);
+      wrapper.appendChild(closeBtn);
+      overlay.appendChild(wrapper);
+    } else if (type === "unknown") {
+      // Deliberately has no id/testid our dismiss functions look for, and no
+      // close action — simulates a dialog type we've never seen before.
+      const btn = document.createElement("button");
+      btn.id = "mystery-dialog-button";
+      btn.textContent = "Some new promo we've never seen";
+      overlay.appendChild(btn);
+    }
+
+    document.body.appendChild(overlay);
+  }
+
+  document.getElementById("load-more-btn").addEventListener("click", () => {
+    const nextIndex = batchIndex + 1;
+    if (nextIndex >= batches.length) {
+      document.getElementById("load-more-btn").remove();
+      return;
+    }
+    batchIndex = nextIndex;
+    renderBatch(batches[batchIndex]);
+    if (batchIndex >= batches.length - 1) {
+      document.getElementById("load-more-btn").remove();
+    }
+  });
+
+  renderBatch(batches[0]);
+  const blockerType = ${JSON.stringify(blockerType)};
+  if (blockerType !== "none") injectOverlay(blockerType);
+</script>
+</body></html>`;
+}
+
 // A page with none of the expected schedule markup at all — used to test the
 // "layout changed" branch of diagnoseScrapePage/waitForSelectorSafe.
 export function buildUnexpectedLayoutHtml() {

@@ -1,6 +1,7 @@
 import inquirer from "inquirer";
 
 import { getListOfLeagues } from "../../../scraper/services/leagues/index.js";
+import { throwCancelled } from "../../../constants/index.js";
 
 import { start, stop } from "../../loader/index.js";
 
@@ -21,7 +22,7 @@ export const selectLeague = async (context, countryId) => {
 
   if (choice === "Cancel") {
     console.info("\nNo option selected. Exiting...\n");
-    throw Error;
+    throwCancelled();
   }
 
   return leagues.find((league) => league.name === choice);

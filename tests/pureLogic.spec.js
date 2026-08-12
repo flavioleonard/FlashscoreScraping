@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { normalize, isAllowedCompetition, dateForOffset, parseArgs } from "../src/scan-h2h.js";
 import { normalizeH2HDate, buildH2HUrl } from "../src/scraper/services/h2h/index.js";
+import { buildStatsUrl } from "../src/scraper/services/matches/index.js";
+import { CANCEL_MESSAGE, throwCancelled } from "../src/constants/index.js";
 
 test.describe("scan-h2h.js pure helpers", () => {
   test.describe("normalize", () => {
@@ -128,5 +130,51 @@ test.describe("h2h/index.js pure helpers", () => {
       expect(buildH2HUrl(null)).toBeNull();
       expect(buildH2HUrl(undefined)).toBeNull();
     });
+
+    test("returns null (instead of a literal 'mid=null') when the URL has no mid param", () => {
+      expect(buildH2HUrl("https://www.flashscore.com/match/football/aaa111/")).toBeNull();
+    });
+  });
+
+  test.describe("buildStatsUrl", () => {
+    test("rewrites a match URL to its stats tab, preserving the mid param", () => {
+      expect(buildStatsUrl("https://www.flashscore.com/match/football/aaa111/?mid=aaa111")).toBe(
+        "https://www.flashscore.com/match/football/aaa111/summary/stats/?mid=aaa111"
+      );
+    });
+
+    test("returns null for a null/missing match URL", () => {
+      expect(buildStatsUrl(null)).toBeNull();
+      expect(buildStatsUrl(undefined)).toBeNull();
+    });
+
+    test("returns null (instead of a literal 'mid=null') when the URL has no mid param", () => {
+      expect(buildStatsUrl("https://www.flashscore.com/match/football/aaa111/")).toBeNull();
+    });
+  });
+});
+
+test.describe("CLI prompt cancel throw (bug: bare `throw Error;` had no .message)", () => {
+  // These four prompt modules (countries/leagues/season/fileType) are
+  // interactive inquirer prompts, not practical to drive end-to-end in a
+  // test — but their "what to throw on Cancel" logic has been extracted into
+  // this one shared, directly-testable function, so the actual fix (a real
+  // Error instance with a real message, not the bare `Error` constructor) is
+  // verified here rather than just documented. See constants/index.js for
+  // why this mattered: src/index.js's catch only logged `error.message`,
+  // which is falsy for a bare `throw Error;`, so cancelling silently killed
+  // the whole CLI with zero output.
+  test("throws a real Error instance with a non-empty message", () => {
+    expect(() => throwCancelled()).toThrow(Error);
+    expect(() => throwCancelled()).toThrow(CANCEL_MESSAGE);
+  });
+
+  test("the thrown error's message is truthy (this is what src/index.js's catch checks)", () => {
+    try {
+      throwCancelled();
+    } catch (error) {
+      expect(error.message).toBeTruthy();
+      expect(error.message).toBe(CANCEL_MESSAGE);
+    }
   });
 });

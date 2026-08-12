@@ -34,6 +34,67 @@ export const waitAndClick = async (page, selector, timeout = TIMEOUT) => {
   }, selector);
 };
 
+// Flashscore's age-verification gate (a "wcl-dialog" overlay asking to
+// confirm your age) sits on top of real hit-tested clicks (the day-picker
+// arrow, the "load more" pagination button, ...) and intercepts their
+// pointer events. There's no stable data-testid for the specific button (the
+// dialog's two buttons share data-testid="wcl-button"), so we match by text —
+// on the stable "AND OLDER" suffix rather than a specific age, since the site
+// already changed the threshold once ("24 AND OLDER" -> "18 AND OLDER"). Both
+// dialogs can mount a beat after the underlying content does, so we use
+// locators (which actively wait/retry) rather than a one-shot querySelector
+// check — a single snapshot check right after content appears can race the
+// dialog's own mount and silently miss it.
+//
+// These three dismiss functions live here (rather than in a single call
+// site's module) because the overlays they handle are generic, site-wide
+// nuisances — not specific to any one scraping flow. They started out in
+// schedule/index.js (where the day-picker "next" click was the first real
+// click found to be affected) and were moved here once matches/index.js's
+// "load more" pagination click turned out to be blocked by the exact same
+// overlays.
+const AGE_VERIFICATION_BUTTON_TEXT = /AND OLDER/i;
+// A second, independent overlay (OneTrust cookie consent banner) also sits on
+// top of the page and intercepts clicks — has its own stable button id.
+const COOKIE_CONSENT_ACCEPT_SELECTOR = "#onetrust-accept-btn-handler";
+const DIALOG_DISMISS_TIMEOUT = 5000;
+
+export async function dismissAgeVerificationIfPresent(page) {
+  await page
+    .locator('[data-testid="wcl-button"]')
+    .filter({ hasText: AGE_VERIFICATION_BUTTON_TEXT })
+    .first()
+    .click({ timeout: DIALOG_DISMISS_TIMEOUT })
+    .catch(() => {});
+}
+
+export async function dismissCookieConsentIfPresent(page) {
+  await page
+    .locator(COOKIE_CONSENT_ACCEPT_SELECTOR)
+    .click({ timeout: DIALOG_DISMISS_TIMEOUT })
+    .catch(() => {});
+}
+
+// Flashscore also shows other one-off dialogs built on the same generic
+// "wcl-dialog" component — e.g. a locale-redirect prompt ("Lançamos um
+// Flashscore Brasil...", confirmed live) that has nothing to do with age or
+// cookies, so neither dismissal above matches it. Unlike the age gate (a
+// forced either/or choice with no close button), these generic dialogs carry
+// a stable close-button testid — clicking it declines whatever the dialog is
+// offering and leaves the page as-is, which is what we want in every case
+// (we never want to actually follow a locale redirect mid-scrape). This is a
+// catch-all for dialog types we haven't specifically identified yet, not a
+// replacement for the two dismissals above.
+const GENERIC_DIALOG_CLOSE_SELECTOR = '[data-testid="wcl-dialogCloseButton"]';
+
+export async function dismissGenericDialogIfPresent(page) {
+  await page
+    .locator(GENERIC_DIALOG_CLOSE_SELECTOR)
+    .first()
+    .click({ timeout: DIALOG_DISMISS_TIMEOUT })
+    .catch(() => {});
+}
+
 // Builds a human-readable explanation of why a page isn't showing what we
 // expected — used whenever a critical selector never appears, so scraping
 // failures say WHY instead of just "timeout exceeded". Three broad causes,

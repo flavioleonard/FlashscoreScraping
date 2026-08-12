@@ -2,6 +2,7 @@ import inquirer from "inquirer";
 import chalk from "chalk";
 
 import { getListOfCountries } from "../../../scraper/services/countries/index.js";
+import { throwCancelled } from "../../../constants/index.js";
 
 import { start, stop } from "../../loader/index.js";
 
@@ -33,7 +34,7 @@ export const selectCountry = async (context, inputCountry) => {
 
   if (choice === "Cancel") {
     console.info("\nNo option selected. Exiting...\n");
-    throw Error;
+    throwCancelled();
   }
 
   return findCountry(countries, choice);

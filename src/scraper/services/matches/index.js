@@ -1,5 +1,57 @@
 import { TIMEOUT } from "../../../constants/index.js";
-import { openPageAndNavigate, waitForSelectorSafe } from "../../index.js";
+import {
+  diagnoseScrapePage,
+  dismissAgeVerificationIfPresent,
+  dismissCookieConsentIfPresent,
+  dismissGenericDialogIfPresent,
+  openPageAndNavigate,
+  waitForSelectorSafe,
+} from "../../index.js";
+
+const MAX_LOAD_MORE_CLICK_ATTEMPTS = 3;
+
+// Mechanically identical to clickNextDayWithRetries in schedule/index.js:
+// the "load more" pagination button is a real hit-tested Playwright click,
+// and it turns out to be blocked by the exact same site-wide overlays (age
+// gate, cookie consent, generic dialogs) as the day-picker's "next" arrow
+// was — see the BUG FIX note in schedule/index.js for how that one went
+// unnoticed for weeks. A bare `click(); catch { break; }` here would
+// reproduce that same silent-failure shape: pagination would quietly stop
+// after whatever page happened to be on screen when an overlay first
+// mounted, with zero error output. Retry a few times, re-running all known
+// dismissals between attempts, and warn loudly (with a live diagnosis) if
+// every attempt still fails instead of breaking silently.
+async function clickLoadMoreWithRetries(page, selector) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < MAX_LOAD_MORE_CLICK_ATTEMPTS; attempt += 1) {
+    const loadMoreBtn = await page.$(selector);
+    // No button at all is a legitimate end state (no more pages to load),
+    // not a failure — nothing to warn about.
+    if (!loadMoreBtn) return false;
+
+    try {
+      await loadMoreBtn.click({ timeout: 10000 });
+      return true;
+    } catch (error) {
+      lastError = error;
+      await dismissAgeVerificationIfPresent(page);
+      await dismissCookieConsentIfPresent(page);
+      await dismissGenericDialogIfPresent(page);
+    }
+  }
+
+  // The button existed but every click attempt failed — always a real
+  // problem (an overlay we don't know how to dismiss, or something else
+  // blocking the page). Warn loudly with a live diagnosis instead of
+  // silently keeping whatever matches had already loaded.
+  const diagnosis = await diagnoseScrapePage(page);
+  console.warn(
+    `⚠️  Não foi possível clicar em "load more" após ${MAX_LOAD_MORE_CLICK_ATTEMPTS} tentativas ` +
+      `(último erro: ${lastError?.message?.split("\n")[0] ?? "desconhecido"}). ${diagnosis}`
+  );
+  return false;
+}
 
 export const getMatchLinks = async (context, leagueSeasonUrl, type) => {
   const page = await openPageAndNavigate(context, `${leagueSeasonUrl}/${type}`);
@@ -20,14 +72,8 @@ export const getMatchLinks = async (context, leagueSeasonUrl, type) => {
   while (true) {
     const countBefore = await page.$$eval(MATCH_SELECTOR, (els) => els.length);
 
-    const loadMoreBtn = await page.$(LOAD_MORE_SELECTOR);
-    if (!loadMoreBtn) break;
-
-    try {
-      await loadMoreBtn.click();
-    } catch {
-      break;
-    }
+    const clicked = await clickLoadMoreWithRetries(page, LOAD_MORE_SELECTOR);
+    if (!clicked) break;
 
     // Wait for the match count to actually grow instead of a fixed delay:
     // on a loaded system the new rows can take longer than a flat timeout
@@ -91,12 +137,18 @@ export const getMatchData = async (context, { id: matchId, url }) => {
   return { matchId, ...matchData, information, statistics };
 };
 
-const buildStatsUrl = (matchUrl) => {
+export const buildStatsUrl = (matchUrl) => {
   if (!matchUrl) return null;
 
   const url = new URL(matchUrl);
   const base = url.origin + url.pathname.replace(/\/$/, "");
   const mid = url.searchParams.get("mid");
+  // Without this check, a matchUrl missing `mid` silently produces the
+  // literal string "...mid=null" instead of failing clearly — the resulting
+  // page load would then 404 or serve garbage with no indication why.
+  // Returning null matches the "no matchUrl provided" convention above, so
+  // callers get one clean, checkable "can't build this URL" signal either way.
+  if (!mid) return null;
 
   return `${base}/summary/stats/?mid=${mid}`;
 };

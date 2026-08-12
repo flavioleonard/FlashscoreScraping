@@ -21,6 +21,12 @@ export const buildH2HUrl = (matchUrl) => {
   const url = new URL(matchUrl);
   const base = url.origin + url.pathname.replace(/\/$/, "");
   const mid = url.searchParams.get("mid");
+  // Without this check, a matchUrl missing `mid` silently produces the
+  // literal string "...mid=null" instead of failing clearly — the resulting
+  // page load would then 404 or serve garbage with no indication why.
+  // Returning null matches the "no matchUrl provided" convention above, so
+  // callers get one clean, checkable "can't build this URL" signal either way.
+  if (!mid) return null;
 
   return `${base}/h2h/overall/?mid=${mid}`;
 };
