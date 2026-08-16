@@ -103,6 +103,42 @@ test("recovers from an overlay blocking the day-picker and still advances", asyn
   expect(matches.map((m) => m.id)).toEqual(["day1"]);
 });
 
+test("captures matches from every .sportName.soccer container, not just the first", async ({
+  context,
+}) => {
+  // Reproduces a live bug: the real homepage renders a small "live now"
+  // .sportName.soccer container alongside the full day's schedule in a
+  // second, separate .sportName.soccer container — document.querySelector
+  // (singular) only ever sees the first one. Confirmed live: a day with 440
+  // total matches split into a 9-match container and a 431-match container
+  // with zero overlapping match ids; getMatchesForDay returned only the 9,
+  // silently dropping the other 431 (including real matches like Mirassol x
+  // Flamengo) from every downstream signal that depends on the day scan.
+  const html = buildSchedulePageHtml({
+    days: [
+      [
+        {
+          country: "Brazil",
+          competition: "Brasileirão Série A",
+          matches: [{ id: "mainlist1", time: "18:30" }],
+        },
+      ],
+    ],
+    extraContainerGroups: [
+      {
+        country: "England",
+        competition: "FA Community Shield",
+        matches: [{ id: "livelist1", time: "11:00" }],
+      },
+    ],
+  });
+  await mockSchedulePage(context, html);
+
+  const matches = await getMatchesForDay(context, 0);
+
+  expect(matches.map((m) => m.id).sort()).toEqual(["livelist1", "mainlist1"]);
+});
+
 test("skips match rows missing an id or link instead of throwing", async ({ context }) => {
   const html = `<!doctype html><html><body>
     <div class="sportName soccer">
