@@ -129,27 +129,40 @@ export const getMatchesForDay = async (context, dayOffset = 0) => {
       // shared container (div.sportName.soccer), not nested — each match
       // belongs to whichever wrapper most recently preceded it in document
       // order, until the next wrapper starts a new competition group.
+      //
+      // BUG FIX (found investigating "0 signals for a day with 440 real
+      // matches"): the homepage can render MORE THAN ONE .sportName.soccer
+      // container at once — confirmed live, a small "live now" list plus the
+      // full day's schedule, with zero overlapping match ids between them.
+      // document.querySelector (singular) only ever sees the first one,
+      // silently dropping every match in the others. Iterate all containers
+      // querySelectorAll finds, resetting the country/competition context at
+      // the start of each one (a wrapper in one container must never leak
+      // into another).
       const results = [];
-      const container = document.querySelector(".sportName.soccer") ?? document.body;
+      const containers = document.querySelectorAll(".sportName.soccer");
+      const scanRoots = containers.length > 0 ? containers : [document.body];
 
-      let country = null;
-      let competition = null;
+      scanRoots.forEach((container) => {
+        let country = null;
+        let competition = null;
 
-      Array.from(container.children).forEach((child) => {
-        if (child.matches(leagueWrapperSelector)) {
-          country = child.querySelector(".headerLeague__flag")?.getAttribute("title") ?? null;
-          competition = child.querySelector(".headerLeague__title-text")?.innerText.trim() ?? null;
-          return;
-        }
+        Array.from(container.children).forEach((child) => {
+          if (child.matches(leagueWrapperSelector)) {
+            country = child.querySelector(".headerLeague__flag")?.getAttribute("title") ?? null;
+            competition = child.querySelector(".headerLeague__title-text")?.innerText.trim() ?? null;
+            return;
+          }
 
-        if (!child.matches(matchSelector)) return;
+          if (!child.matches(matchSelector)) return;
 
-        const id = child.id?.replace("g_1_", "");
-        const url = child.querySelector("a.eventRowLink")?.href ?? null;
-        const time = child.querySelector(".event__time")?.innerText.trim();
-        if (!id || !url) return;
+          const id = child.id?.replace("g_1_", "");
+          const url = child.querySelector("a.eventRowLink")?.href ?? null;
+          const time = child.querySelector(".event__time")?.innerText.trim();
+          if (!id || !url) return;
 
-        results.push({ id, url, time, country, competition });
+          results.push({ id, url, time, country, competition });
+        });
       });
 
       return results;

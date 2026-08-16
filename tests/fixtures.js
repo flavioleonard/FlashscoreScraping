@@ -17,9 +17,41 @@
 // viewport from page load, exactly like the real age/cookie/locale dialogs
 // do — each has its own close action wired up except "unknown", which is
 // permanently stuck (used to test the exhausted-retries path).
-export function buildSchedulePageHtml({ days, blockerType = "none" }) {
+//
+// `extraContainerGroups` reproduces a real Flashscore homepage quirk found
+// investigating a "0 signals for a day with lots of real matches" report: the
+// page renders TWO separate `.sportName.soccer` containers side by side (a
+// small "live now" list plus the full day's schedule, confirmed live to have
+// zero match-id overlap) — not one, like every other fixture here assumed.
+// When set, a second static container (no day-picker interactivity, matching
+// the real "live" widget which doesn't reshuffle on day navigation) is
+// rendered with these groups, same {country, competition, matches} shape as
+// `days[n]`.
+export function buildSchedulePageHtml({ days, blockerType = "none", extraContainerGroups = null }) {
+  const extraContainerHtml = extraContainerGroups
+    ? `<div class="sportName soccer" id="extra-container">${extraContainerGroups
+        .map(
+          (group) => `
+      <div class="headerLeague__wrapper">
+        <span class="headerLeague__flag" title="${group.country}"></span>
+        <span class="headerLeague__title-text">${group.competition}</span>
+      </div>
+      ${group.matches
+        .map(
+          (m) => `
+      <div id="g_1_${m.id}" class="event__match event__match--withRowLink event__match--twoLine">
+        <a class="eventRowLink" href="https://www.flashscore.com/match/football/${m.id}/?mid=${m.id}"></a>
+        <div class="event__time">${m.time}</div>
+      </div>`
+        )
+        .join("")}`
+        )
+        .join("")}</div>`
+    : "";
+
   return `<!doctype html>
 <html><body>
+${extraContainerHtml}
 <div class="sportName soccer" id="root"></div>
 <button data-day-picker-arrow="next" id="next-day-btn"></button>
 <script>
